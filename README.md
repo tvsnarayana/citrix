@@ -36,4 +36,5 @@ ansible-playbook -i hosts hosts site.yml "masAdminUsername=*MAS-Username*" -e ma
 ## Todo
 - Configure SSL for management
 - Configure licenses
+- Change long attributes to use combine() instead
 - Refactor with include_task to make the different easier to find and work with
