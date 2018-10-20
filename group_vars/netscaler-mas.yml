@@ -1,0 +1,144 @@
+configuration:
+  mps_network_config:
+    dns: '10.0.0.10'
+    alternate_dns: '10.0.0.11'
+  current_timezone:
+    timezone: 'UTC+0200 CEST Europe/Stockholm'
+  system_settings:
+    svm_ns_comm: https
+    secure_access_only: true
+    enable_session_timeout: true
+    session_timeout: 30
+    session_timeout_unit: Minutes
+    basicauth: true
+    enable_nsrecover_login: false
+    enable_certificate_download: true
+    enable_shell_access: true
+    enable_apiproxy_credentials: false
+  prune_policy:
+    data_to_keep_in_days: 30
+    do_auto_purge: true
+  syslog_purge_setting:
+    purge_interval_for_generic_data: 180
+  backup_policy:
+    backup_to_retain: 10
+  device_backup_policy:
+    enable_scheduled_backups: true
+    number_of_backups: 30
+    encrypt_backup_file: false
+    is_interval_based: true
+    polling_interval: 6
+    backup_on_cfg_sav_trap: false
+    enable_geodb_backups: false
+    enable_external_transfer: false
+  ntp_server:
+    primary: 'dc01.ad.domain.com'
+    secondary: 'dc02.ad.domain.com'
+    minpoll: ''
+    maxpoll: ''
+    key_id: ''
+    autokey: false
+  ntp_sync:
+    ntpd_status: true
+    reboot: false
+  ldap_server:
+    primary: 'dc01.ad.domain.com'
+    primary_name: 'ldap-server-primary'
+    secondary: 'dc02.ad.domain.com'
+    secondary_name: 'ldap-server-secondary'
+    sec_type: 'SSL'
+    port: '636'
+    type: 'AD'
+    auth_timeout: '3'
+    validate_ldap_server_certs: false
+    ldap_host_name: ''
+    authentication: true
+    base_dn: 'DC=AD,DC=DOMAIN,DC=COM'
+    bind_dn: 'svc.nmasldap@ad.domain.com'
+    change_password: false
+    login_name: 'samAccountName'
+    search_filter: 'memberof:1.2.840.113556.1.4.1941:=CN=MAS-LogonAccess,OU=Groups,DC=AD,DC=DOMAIN,DC=COM'
+    group_attr_name: 'memberOf'
+    subattribute_name: 'CN'
+    default_authentication_group: ''
+    follow_referrals: false
+    max_ldap_referrals: '1'
+    nested_group_extraction: true
+    max_nesting_level: '6'
+    group_search_filter: ''
+    group_name_identifier: 'samAccountName'
+    group_search_attribute: 'memberOf'
+    group_search_subattribute: 'CN'
+  groups:
+    - name: 'MAS-Admin'
+      description: ''
+      roles:
+      - 'admin'
+      enable_session_timeout: false
+      assign_all_devices: true
+      assign_all_apps: true
+      application_list: []
+      permission: none
+      standalone_instances_id: []
+      application_names: []
+      authscope_props:
+      - propname: 'configuration_template_id'
+        propvalues:
+        - 'ALL'
+      - propname: 'stylebook_id'
+        propvalues:
+        - 'ALL'
+    - name: 'MAS-ReadOnly'
+      description: ''
+      roles:
+      - 'readonly'
+      enable_session_timeout: false
+      assign_all_devices: true
+      assign_all_apps: true
+      application_list: []
+      permission: none
+      standalone_instances_id: []
+      application_names: []
+      authscope_props:
+      - propname: 'configuration_template_id'
+        propvalues:
+        - 'ALL'
+      - propname: 'stylebook_id'
+        propvalues:
+        - 'ALL'
+    - name: 'MAS-AppAdmin'
+      description: ''
+      roles:
+      - 'appAdmin'
+      enable_session_timeout: false
+      assign_all_devices: true
+      assign_all_apps: true
+      application_list: []
+      permission: none
+      standalone_instances_id: []
+      application_names: []
+      authscope_props:
+      - propname: 'configuration_template_id'
+        propvalues:
+        - 'ALL'
+      - propname: 'stylebook_id'
+        propvalues:
+        - 'ALL'
+    - name: 'MAS-AppReadOnly'
+      description: ''
+      roles:
+      - 'appReadonly'
+      enable_session_timeout: false
+      assign_all_devices: true
+      assign_all_apps: true
+      application_list: []
+      permission: none
+      standalone_instances_id: []
+      application_names: []
+      authscope_props:
+      - propname: 'configuration_template_id'
+        propvalues:
+        - 'ALL'
+      - propname: 'stylebook_id'
+        propvalues:
+        - 'ALL'

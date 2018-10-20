@@ -1,0 +1,687 @@
+- name: Fail if variables not set
+  assert:
+    that:
+      - masAdminUsername != ""
+      - masAdminPassword != ""
+      - masIpAddress != ""
+      - ldapPassword != ""
+
+- name: Set MAS Defaults
+  set_fact:
+    masDefaultAdminUsername: "nsroot"
+    masDefaultAdminPassword: "nsroot"
+    masValidateCerts: "no"
+
+- name: Test 1 - Login to MAS using default credentials and https
+  ignore_errors: true
+  no_log: true
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_user: "{{ masDefaultAdminUsername }}"
+    nitro_pass: "{{ masDefaultAdminPassword }}"
+    nitro_protocol: https
+    validate_certs: "{{ masValidateCerts }}"
+    operation: mas_login
+  register: login1_result
+
+- name: Test 2 - Login to MAS using provided credentials and https
+  ignore_errors: true
+  no_log: true
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_user: "{{ masAdminUsername }}"
+    nitro_pass: "{{ masAdminPassword }}"
+    nitro_protocol: https
+    validate_certs: "{{ masValidateCerts }}"
+    operation: mas_login
+  register: login2_result
+
+- name: Use MAS auth token from default credentials and https
+  ignore_errors: true
+  no_log: true
+  set_fact:
+    masAuthToken: "{{ login1_result.nitro_auth_token }}"
+    masNitroProtocol: "https"
+    masLoginCreds: "default"
+    masLoginCredsNew: false
+  when: login1_result.nitro_errorcode == 0
+
+- name: Use MAS auth token from provided credentials and http
+  ignore_errors: true
+  no_log: true
+  set_fact:
+    masAuthToken: "{{ login2_result.nitro_auth_token }}"
+    masNitroProtocol: "https"
+    masLoginCreds: "provided"
+    masLoginCredsNew: false
+  when: login2_result.nitro_errorcode == 0
+
+- name: Output what credentials are being used
+  debug:
+    msg: "The following credentials are being used: {{ masLoginCreds }}"
+
+- name: Get nsroot account
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: get_filtered
+    resource: mpsuser
+    filter:
+      name: nsroot
+  register: nsroot_user
+  when: masLoginCreds == "default" and masAdminUsername == "nsroot"
+
+- name: Set nsroot password
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: mpsuser
+    name: ""
+    attributes:
+      password: "{{ masAdminPassword }}"
+      id: "{{ nsroot_user.nitro_object[0].id }}"
+  when: masLoginCreds == "default" and masAdminUsername == "nsroot"
+
+- name: Login to MAS using new credentials and https
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_user: "{{ masAdminUsername }}"
+    nitro_pass: "{{ masAdminPassword }}"
+    nitro_protocol: https
+    validate_certs: "{{ masValidateCerts }}"
+    operation: mas_login
+  register: login_result_new
+  when: masLoginCreds == "default" and masAdminUsername == "nsroot"
+
+- name: Use MAS auth token from new credentials and http
+  set_fact:
+    masAuthToken: "{{ login_result_new.nitro_auth_token }}"
+    masNitroProtocol: "https"
+    masLoginCreds: "provided"
+    masLoginCredsNew: true
+  when: masLoginCreds == "default" and masAdminUsername == "nsroot"
+
+- name: Output what credentials are being used
+  debug:
+    msg: "The following credentials are being used: {{ masLoginCreds }}"
+  when: masLoginCredsNew == true
+
+- name: Get network configuration
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: get_all
+    resource: mps_network_config
+    name: ""
+  register: network_configuration
+
+- name: Configure DNS Servers
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: mps_network_config
+    name: ""
+    attributes: 
+      config_type: "{{ network_configuration.nitro_object[0].config_type }}"
+      ip_address: "{{ network_configuration.nitro_object[0].ip_address }}"
+      netmask: "{{ network_configuration.nitro_object[0].netmask }}"
+      gateway: "{{ network_configuration.nitro_object[0].gateway }}"
+      dns: "{{ configuration.mps_network_config.dns }}"
+      alternate_dns: "{{ configuration.mps_network_config.alternate_dns }}"
+      ipv6_address: "{{ network_configuration.nitro_object[0].ipv6_address }}"
+      gateway_ipv6: "{{ network_configuration.nitro_object[0].gateway_ipv6 }}"
+      dns_v6: "{{ network_configuration.nitro_object[0].dns_v6 }}"
+      alternate_dns_v6: "{{ network_configuration.nitro_object[0].alternate_dns_v6 }}"
+
+- name: Configure time zone
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: current_timezone
+    name: ""
+    attributes: "{{ configuration.current_timezone }}"
+
+- name: Set system configuration
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: system_settings
+    name: ""
+    attributes: "{{ configuration.system_settings }}"
+
+- name: Configure prune policy
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: prune_policy
+    name: ""
+    attributes: "{{ configuration.prune_policy }}"
+
+- name: Get syslog purge settings
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: get_all
+    resource: syslog_purge_setting
+  register: current_syslog_purge_setting
+
+- name: Configure syslog purge settings
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: syslog_purge_setting
+    name: ""
+    attributes: 
+      id: "{{ current_syslog_purge_setting.nitro_object[0].id }}"
+      purge_interval_for_generic_data: "{{ configuration.syslog_purge_setting.purge_interval_for_generic_data }}"
+
+- name: Configure backup policy
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: backup_policy
+    name: ""
+    attributes: "{{ configuration.backup_policy }}"
+
+- name: Configure device backup policy
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: device_backup_policy
+    name: ""
+    attributes: "{{ configuration.device_backup_policy }}"
+
+- name: Test - primary NTP Server
+  netscaler_nitro_request:
+    expected_nitro_errorcode: [0, 10008]
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: get
+    resource: ntp_server
+    name: "{{ configuration.ntp_server.primary }}"
+  register: testPrimaryNtp
+
+- name: Add primary NTP Server
+  netscaler_nitro_request:
+    expected_nitro_errorcode: [-1, 0]
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: add
+    resource: ntp_server
+    attributes: 
+      server: "{{ configuration.ntp_server.primary }}"
+      minpoll: "{{ configuration.ntp_server.minpoll }}"
+      maxpoll: "{{ configuration.ntp_server.maxpoll }}"
+      key_id: "{{ configuration.ntp_server.key_id }}"
+      autokey: "{{ configuration.ntp_server.autokey }}"
+      preferred_server: true
+  register: primaryNtp
+  failed_when: (primaryNtp.http_response_body | from_json)['ntp_server'][0]['server'] != configuration.ntp_server.primary
+  when: testPrimaryNtp.nitro_errorcode == 10008
+
+- name: Update primary NTP Server
+  netscaler_nitro_request:
+    expected_nitro_errorcode: [-1, 0]
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: ntp_server
+    name: "{{ configuration.ntp_server.primary }}"
+    attributes: 
+      server: "{{ configuration.ntp_server.primary }}"
+      minpoll: "{{ configuration.ntp_server.minpoll }}"
+      maxpoll: "{{ configuration.ntp_server.maxpoll }}"
+      key_id: "{{ configuration.ntp_server.key_id }}"
+      autokey: "{{ configuration.ntp_server.autokey }}"
+      preferred_server: true
+  register: primaryNtp
+  failed_when: (primaryNtp.http_response_body | from_json)['ntp_server'][0]['server'] != configuration.ntp_server.primary
+  when: testPrimaryNtp.nitro_errorcode == 0
+
+- name: Test - secondary NTP Server
+  netscaler_nitro_request:
+    expected_nitro_errorcode: [0, 10008]
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: get
+    resource: ntp_server
+    name: "{{ configuration.ntp_server.secondary }}"
+  register: testSecondaryNtp
+
+- name: Add secondary NTP Server
+  netscaler_nitro_request:
+    expected_nitro_errorcode: [-1, 0]
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: add
+    resource: ntp_server
+    attributes: 
+      server: "{{ configuration.ntp_server.secondary }}"
+      minpoll: "{{ configuration.ntp_server.minpoll }}"
+      maxpoll: "{{ configuration.ntp_server.maxpoll }}"
+      key_id: "{{ configuration.ntp_server.key_id }}"
+      autokey: "{{ configuration.ntp_server.autokey }}"
+      preferred_server: true
+  register: secondaryNtp
+  failed_when: (secondaryNtp.http_response_body | from_json)['ntp_server'][0]['server'] != configuration.ntp_server.secondary
+  when: testSecondaryNtp.nitro_errorcode == 10008
+
+- name: Update secondary NTP Server
+  netscaler_nitro_request:
+    expected_nitro_errorcode: [-1, 0]
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: ntp_server
+    name: "{{ configuration.ntp_server.secondary }}"
+    attributes: 
+      server: "{{ configuration.ntp_server.secondary }}"
+      minpoll: "{{ configuration.ntp_server.minpoll }}"
+      maxpoll: "{{ configuration.ntp_server.maxpoll }}"
+      key_id: "{{ configuration.ntp_server.key_id }}"
+      autokey: "{{ configuration.ntp_server.autokey }}"
+      preferred_server: true
+  register: secondaryNtp
+  failed_when: (secondaryNtp.http_response_body | from_json)['ntp_server'][0]['server'] != configuration.ntp_server.secondary
+  when: testSecondaryNtp.nitro_errorcode == 0
+
+- name: Get NTP sync configuration
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: get_all
+    resource: ntp_sync
+    name: ""
+  register: ntpSyncConfiguration
+
+- name: Configure NTP sync if not already configured
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: ntp_sync
+    name: ""
+    attributes: "{{ configuration.ntp_sync }}"
+  when: ((ntpSyncConfiguration.http_response_body | from_json)['ntp_sync'][0]['ntpd_status'] | bool) != configuration.ntp_sync.ntpd_status
+
+- name: Reboot if NTP is changed
+  ignore_errors: true
+  uri:
+    url: "{{ masNitroProtocol }}://{{ masIpAddress }}/nitro/v1/config/mps?action=reboot"
+    validate_certs: "{{ masValidateCerts }}"
+    method: POST
+    status_code: 200
+    headers:
+      Cookie: "NITRO_AUTH_TOKEN={{ masAuthToken }}"
+    body_format: json
+    body:
+      mps: {}
+  when: ((ntpSyncConfiguration.http_response_body | from_json)['ntp_sync'][0]['ntpd_status'] | bool) != configuration.ntp_sync.ntpd_status
+
+- name: Pause playbook for 1 minute after reboot
+  pause:
+    minutes: 1
+  when: ((ntpSyncConfiguration.http_response_body | from_json)['ntp_sync'][0]['ntpd_status'] | bool) != configuration.ntp_sync.ntpd_status
+
+- name: Login to MAS after reboot
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_user: "{{ masAdminUsername }}"
+    nitro_pass: "{{ masAdminPassword }}"
+    nitro_protocol: https
+    validate_certs: "{{ masValidateCerts }}"
+    operation: mas_login
+  register: login_result_reboot
+  when: ((ntpSyncConfiguration.http_response_body | from_json)['ntp_sync'][0]['ntpd_status'] | bool) != configuration.ntp_sync.ntpd_status
+  until: login_result_reboot.nitro_errorcode == 0
+  retries: 15
+  delay: 30
+
+- name: Use MAS auth token from after reboot
+  set_fact:
+    masAuthToken: "{{ login_result_reboot.nitro_auth_token }}"
+  when: ((ntpSyncConfiguration.http_response_body | from_json)['ntp_sync'][0]['ntpd_status'] | bool) != configuration.ntp_sync.ntpd_status
+
+- name: Output what credentials are being used
+  debug:
+    msg: "The following credentials are being used: {{ masLoginCreds }}"
+  when: ((ntpSyncConfiguration.http_response_body | from_json)['ntp_sync'][0]['ntpd_status'] | bool) != configuration.ntp_sync.ntpd_status
+
+- name: Get NTP sync configuration after reboot if NTP is changed
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: get_all
+    resource: ntp_sync
+    name: ""
+  register: ntpSyncConfigurationReboot
+  when: ((ntpSyncConfiguration.http_response_body | from_json)['ntp_sync'][0]['ntpd_status'] | bool) != configuration.ntp_sync.ntpd_status
+  until: ntpSyncConfigurationReboot.nitro_errorcode == 0
+  retries: 15
+  delay: 30
+
+- name: Test - primary LDAP Server
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: get_filtered
+    resource: ldap_server
+    filter:
+      name: "{{ configuration.ldap_server.primary_name }}"
+  register: testPrimaryLdap
+
+- name: Add primary LDAP Server
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: add
+    resource: ldap_server
+    attributes: 
+      name: "{{ configuration.ldap_server.primary_name }}"
+      ip_address: "{{ configuration.ldap_server.primary }}"
+      sec_type: "{{ configuration.ldap_server.sec_type }}"
+      port: "{{ configuration.ldap_server.port }}"
+      type: "{{ configuration.ldap_server.type }}"
+      auth_timeout: "{{ configuration.ldap_server.auth_timeout }}"
+      validate_ldap_server_certs: "{{ configuration.ldap_server.validate_ldap_server_certs }}"
+      ldap_host_name: "{{ configuration.ldap_server.ldap_host_name }}"
+      authentication: "{{ configuration.ldap_server.authentication }}"
+      base_dn: "{{ configuration.ldap_server.base_dn }}"
+      bind_dn: "{{ configuration.ldap_server.bind_dn }}"
+      bind_passwd: "{{ ldapPassword }}"
+      change_password: "{{ configuration.ldap_server.change_password }}"
+      login_name: "{{ configuration.ldap_server.login_name }}"
+      search_filter: "{{ configuration.ldap_server.search_filter }}"
+      group_attr_name: "{{ configuration.ldap_server.group_attr_name }}"
+      subattribute_name: "{{ configuration.ldap_server.subattribute_name }}"
+      default_authentication_group: "{{ configuration.ldap_server.default_authentication_group }}"
+      follow_referrals: "{{ configuration.ldap_server.follow_referrals }}"
+      max_ldap_referrals: "{{ configuration.ldap_server.max_ldap_referrals }}"
+      nested_group_extraction: "{{ configuration.ldap_server.nested_group_extraction }}"
+      max_nesting_level: "{{ configuration.ldap_server.max_nesting_level }}"
+      group_search_filter: "{{ configuration.ldap_server.group_search_filter }}"
+      group_name_identifier: "{{ configuration.ldap_server.group_name_identifier }}"
+      group_search_attribute: "{{ configuration.ldap_server.group_search_attribute }}"
+      group_search_subattribute: "{{ configuration.ldap_server.group_search_subattribute }}"
+  register: primaryLdap
+  failed_when: (primaryLdap.http_response_body | from_json)['ldap_server'][0]['ip_address'] != configuration.ldap_server.primary
+  when: ((testPrimaryLdap.http_response_body | from_json)['ldap_server'] | length) == 0
+
+- name: Update primary LDAP Server
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: ldap_server
+    name: "{{ testPrimaryLdap.nitro_object[0].id }}"
+    attributes: 
+      name: "{{ configuration.ldap_server.primary_name }}"
+      ip_address: "{{ configuration.ldap_server.primary }}"
+      sec_type: "{{ configuration.ldap_server.sec_type }}"
+      port: "{{ configuration.ldap_server.port }}"
+      type: "{{ configuration.ldap_server.type }}"
+      auth_timeout: "{{ configuration.ldap_server.auth_timeout }}"
+      validate_ldap_server_certs: "{{ configuration.ldap_server.validate_ldap_server_certs }}"
+      ldap_host_name: "{{ configuration.ldap_server.ldap_host_name }}"
+      authentication: "{{ configuration.ldap_server.authentication }}"
+      base_dn: "{{ configuration.ldap_server.base_dn }}"
+      bind_dn: "{{ configuration.ldap_server.bind_dn }}"
+      bind_passwd: "{{ ldapPassword }}"
+      change_password: "{{ configuration.ldap_server.change_password }}"
+      login_name: "{{ configuration.ldap_server.login_name }}"
+      search_filter: "{{ configuration.ldap_server.search_filter }}"
+      group_attr_name: "{{ configuration.ldap_server.group_attr_name }}"
+      subattribute_name: "{{ configuration.ldap_server.subattribute_name }}"
+      default_authentication_group: "{{ configuration.ldap_server.default_authentication_group }}"
+      follow_referrals: "{{ configuration.ldap_server.follow_referrals }}"
+      max_ldap_referrals: "{{ configuration.ldap_server.max_ldap_referrals }}"
+      nested_group_extraction: "{{ configuration.ldap_server.nested_group_extraction }}"
+      max_nesting_level: "{{ configuration.ldap_server.max_nesting_level }}"
+      group_search_filter: "{{ configuration.ldap_server.group_search_filter }}"
+      group_name_identifier: "{{ configuration.ldap_server.group_name_identifier }}"
+      group_search_attribute: "{{ configuration.ldap_server.group_search_attribute }}"
+      group_search_subattribute: "{{ configuration.ldap_server.group_search_subattribute }}"
+  register: primaryLdap
+  failed_when: (primaryLdap.http_response_body | from_json)['ldap_server'][0]['ip_address'] != configuration.ldap_server.primary
+  when: ((testPrimaryLdap.http_response_body | from_json)['ldap_server'] | length) > 0
+
+- name: Test - secondary LDAP Server
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: get_filtered
+    resource: ldap_server
+    filter:
+      name: "{{ configuration.ldap_server.secondary_name }}"
+  register: testSecondaryLdap
+
+- name: Add secondary LDAP Server
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: add
+    resource: ldap_server
+    attributes: 
+      name: "{{ configuration.ldap_server.secondary_name }}"
+      ip_address: "{{ configuration.ldap_server.secondary }}"
+      sec_type: "{{ configuration.ldap_server.sec_type }}"
+      port: "{{ configuration.ldap_server.port }}"
+      type: "{{ configuration.ldap_server.type }}"
+      auth_timeout: "{{ configuration.ldap_server.auth_timeout }}"
+      validate_ldap_server_certs: "{{ configuration.ldap_server.validate_ldap_server_certs }}"
+      ldap_host_name: "{{ configuration.ldap_server.ldap_host_name }}"
+      authentication: "{{ configuration.ldap_server.authentication }}"
+      base_dn: "{{ configuration.ldap_server.base_dn }}"
+      bind_dn: "{{ configuration.ldap_server.bind_dn }}"
+      bind_passwd: "{{ ldapPassword }}"
+      change_password: "{{ configuration.ldap_server.change_password }}"
+      login_name: "{{ configuration.ldap_server.login_name }}"
+      search_filter: "{{ configuration.ldap_server.search_filter }}"
+      group_attr_name: "{{ configuration.ldap_server.group_attr_name }}"
+      subattribute_name: "{{ configuration.ldap_server.subattribute_name }}"
+      default_authentication_group: "{{ configuration.ldap_server.default_authentication_group }}"
+      follow_referrals: "{{ configuration.ldap_server.follow_referrals }}"
+      max_ldap_referrals: "{{ configuration.ldap_server.max_ldap_referrals }}"
+      nested_group_extraction: "{{ configuration.ldap_server.nested_group_extraction }}"
+      max_nesting_level: "{{ configuration.ldap_server.max_nesting_level }}"
+      group_search_filter: "{{ configuration.ldap_server.group_search_filter }}"
+      group_name_identifier: "{{ configuration.ldap_server.group_name_identifier }}"
+      group_search_attribute: "{{ configuration.ldap_server.group_search_attribute }}"
+      group_search_subattribute: "{{ configuration.ldap_server.group_search_subattribute }}"
+  register: secondaryLdap
+  failed_when: (secondaryLdap.http_response_body | from_json)['ldap_server'][0]['ip_address'] != configuration.ldap_server.secondary
+  when: ((testSecondaryLdap.http_response_body | from_json)['ldap_server'] | length) == 0
+
+- name: Update secondary LDAP Server
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: ldap_server
+    name: "{{ testSecondaryLdap.nitro_object[0].id }}"
+    attributes: 
+      name: "{{ configuration.ldap_server.secondary_name }}"
+      ip_address: "{{ configuration.ldap_server.secondary }}"
+      sec_type: "{{ configuration.ldap_server.sec_type }}"
+      port: "{{ configuration.ldap_server.port }}"
+      type: "{{ configuration.ldap_server.type }}"
+      auth_timeout: "{{ configuration.ldap_server.auth_timeout }}"
+      validate_ldap_server_certs: "{{ configuration.ldap_server.validate_ldap_server_certs }}"
+      ldap_host_name: "{{ configuration.ldap_server.ldap_host_name }}"
+      authentication: "{{ configuration.ldap_server.authentication }}"
+      base_dn: "{{ configuration.ldap_server.base_dn }}"
+      bind_dn: "{{ configuration.ldap_server.bind_dn }}"
+      bind_passwd: "{{ ldapPassword }}"
+      change_password: "{{ configuration.ldap_server.change_password }}"
+      login_name: "{{ configuration.ldap_server.login_name }}"
+      search_filter: "{{ configuration.ldap_server.search_filter }}"
+      group_attr_name: "{{ configuration.ldap_server.group_attr_name }}"
+      subattribute_name: "{{ configuration.ldap_server.subattribute_name }}"
+      default_authentication_group: "{{ configuration.ldap_server.default_authentication_group }}"
+      follow_referrals: "{{ configuration.ldap_server.follow_referrals }}"
+      max_ldap_referrals: "{{ configuration.ldap_server.max_ldap_referrals }}"
+      nested_group_extraction: "{{ configuration.ldap_server.nested_group_extraction }}"
+      max_nesting_level: "{{ configuration.ldap_server.max_nesting_level }}"
+      group_search_filter: "{{ configuration.ldap_server.group_search_filter }}"
+      group_name_identifier: "{{ configuration.ldap_server.group_name_identifier }}"
+      group_search_attribute: "{{ configuration.ldap_server.group_search_attribute }}"
+      group_search_subattribute: "{{ configuration.ldap_server.group_search_subattribute }}"
+  register: secondaryLdap
+  failed_when: (secondaryLdap.http_response_body | from_json)['ldap_server'][0]['ip_address'] != configuration.ldap_server.secondary
+  when: ((testSecondaryLdap.http_response_body | from_json)['ldap_server'] | length) > 0
+
+- name: Enable external authentication servers
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: aaa_server
+    name: ""
+    attributes:
+      primary_server_type: 'LDAP'
+      primary_server_name: "{{ configuration.ldap_server.primary_name }}"
+      fallback_local_authentication: true
+      external_servers:
+      - external_server_type: 'LDAP'
+        external_server_name: "{{ configuration.ldap_server.secondary_name }}"
+        priority: 2
+
+- name: Get Owner tenant id
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: get
+    resource: mps
+    name: ''
+  register: mpsSystem
+
+- name: Test - Groups
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: get_filtered
+    resource: mpsgroup
+    filter:
+      name: "{{ item.name }}"
+  register: testGroups
+  loop: "{{ configuration.groups }}"
+
+- name: Add groups
+  netscaler_nitro_request:
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: add
+    resource: mpsgroup
+    attributes: 
+      id: ''
+      name: "{{ item.name }}"
+      description: "{{ item.description }}"
+      roles: "{{ item.roles }}"
+      enable_session_timeout: "{{ item.enable_session_timeout }}"
+      assign_all_devices: "{{ item.assign_all_devices }}"
+      assign_all_apps: "{{ item.assign_all_apps }}"
+      application_list: "{{ item.application_list }}"
+      permission: "{{ item.permission }}"
+      standalone_instances_id: "{{ item.standalone_instances_id }}"
+      application_names: "{{ item.application_names }}"
+      authscope_props: "{{ item.authscope_props }}"
+      tenant_id: "{{ mpsSystem.nitro_object[0].current_tenant_id }}"
+  register: groups
+  loop: "{{ configuration.groups }}"
+  when: (testGroups.results | json_query("[?nitro_object[0].name=='" + item.name + "'].nitro_object[0].name")) == []
+
+- name: Update groups
+  netscaler_nitro_request:
+    expected_nitro_errorcode: [-1, 0]
+    nsip: "{{ masIpAddress }}"
+    nitro_auth_token: "{{ masAuthToken }}"
+    nitro_protocol: "{{ masNitroProtocol }}"
+    validate_certs: "{{ masValidateCerts }}"
+    operation: update
+    resource: mpsgroup
+    name: ''
+    attributes: 
+      id: "{{ (testGroups.results | json_query(\"[?nitro_object[0].name=='\" + item.name + \"'].nitro_object[0].id\"))[0] }}"
+      name: "{{ item.name }}"
+      description: "{{ item.description }}"
+      roles: "{{ item.roles }}"
+      enable_session_timeout: "{{ item.enable_session_timeout }}"
+      assign_all_devices: "{{ item.assign_all_devices }}"
+      assign_all_apps: "{{ item.assign_all_apps }}"
+      application_list: "{{ item.application_list }}"
+      permission: "{{ item.permission }}"
+      standalone_instances_id: "{{ item.standalone_instances_id }}"
+      application_names: "{{ item.application_names }}"
+      authscope_props: "{{ item.authscope_props }}"
+      tenant_id: "{{ mpsSystem.nitro_object[0].current_tenant_id }}"
+  register: groups
+  loop: "{{ configuration.groups }}"
+  when: (testGroups.results | json_query("[?nitro_object[0].name=='" + item.name + "'].nitro_object[0].name")) != []

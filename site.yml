@@ -1,0 +1,3 @@
+- hosts: netscaler-mas
+  roles:
+    - netscaler-mas-configuration
