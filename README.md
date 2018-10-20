@@ -26,6 +26,9 @@ This playbook configures Citrix NetScaler MAS / Citrix ADM (on-premises). If a p
 ### Citrix ADM
 - Deployed on-premises
 - Change the parameters in [netscaler-mas.yml](group_vars/netscaler-mas.yml)
+- Make sure the groups in AD are created according to the configuration
+  - MAS-LogonAccess, MAS-Admin, MAS-ReadOnly, MAS-AppAdmin, MAS-AppReadOnly
+- Make sure the service account used for LDAP queries is created and you use it's password when running the playbook (LDAP-Password)
 
 ### Ansible playbook
 ansible-playbook -i hosts hosts site.yml "masAdminUsername=*MAS-Username*" -e masAdminPassword='"*MAS-Password*"' -e "masIpAddress=*IPAddress*" -e ldapPassword='"*LDAP-Password*"'
